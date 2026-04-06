@@ -1,0 +1,40 @@
+# 应用配置
+app:
+  name: "AutoBrowser"
+  version: "1.0.0"
+
+# 爬取配置
+crawler:
+  keywords:
+    - "AI"
+    - "artificial intelligence"
+    - "OpenAI"
+    - "Claude"
+    - "GPT"
+    - "LLM"
+  sources:
+    - twitter
+    - reddit
+  limit: 10  # 每次爬取数量
+  interval_hours: 3  # 爬取间隔
+
+# 内容筛选配置
+filter:
+  min_engagement: 10  # 最小互动数
+  max_age_hours: 48  # 最大内容时效（小时）
+
+# 发布配置
+publisher:
+  max_daily_posts: 8  # 每日最大发布数
+  min_interval_minutes: 30  # 发布间隔
+
+# 小红书配置
+xiaohongshu:
+  chrome_port: 9222
+  timeout: 30
+
+# 日志配置
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/app.log"
