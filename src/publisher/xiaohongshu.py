@@ -1,6 +1,6 @@
 """
 小红书发布模块
-调用 xiaohongshu-skills 发布内容
+使用 OpenCLI 发布内容
 """
 import subprocess
 import logging
@@ -10,69 +10,57 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 class XiaohongshuPublisher:
-    """小红书发布器"""
+    """小红书发布器 - 使用 OpenCLI"""
 
     def __init__(self, chrome_port: int = 9222):
         self.chrome_port = chrome_port
-        self.skill_path = self._find_skill_path()
 
-    def _find_skill_path(self) -> Path:
-        """查找小红书技能路径"""
-        # 尝试查找 xiaohongshu-skills
-        possible_paths = [
-            Path.home() / ".claude" / "skills" / "xiaohongshu-skills",
-            Path("/Users/wangzihan/.claude/skills/xiaohongshu-skills"),
-        ]
-        for path in possible_paths:
-            if path.exists():
-                return path
-        return Path("xiaohongshu-skills")  # 默认名称
-
-    def publish(self, title: str, content: str, images: Optional[list] = None) -> dict:
+    def publish(self, title: str, content: str, images: Optional[list] = None, draft: bool = False) -> dict:
         """
         发布图文到小红书
 
         Args:
-            title: 标题
-            content: 内容
-            images: 图片路径列表（可选）
+            title: 标题（最多20字）
+            content: 内容正文
+            images: 图片路径列表（可选，最多9张）
+            draft: 是否保存为草稿
 
         Returns:
             发布结果
         """
         try:
-            # 保存标题和内容到临时文件
-            temp_dir = Path("data/temp")
-            temp_dir.mkdir(parents=True, exist_ok=True)
+            # 确保标题不超过20字
+            if len(title) > 20:
+                title = title[:19] + "…"
 
-            title_file = temp_dir / "title.txt"
-            content_file = temp_dir / "content.txt"
-
-            title_file.write_text(title, encoding='utf-8')
-            content_file.write_text(content, encoding='utf-8')
-
-            # 构建发布命令
+            # 构建 opencli 命令
             cmd = [
-                'python', 'scripts/cli.py', 'publish',
-                '--title-file', str(title_file),
-                '--content-file', str(content_file),
+                'opencli', 'xiaohongshu', 'publish', content,
+                '--title', title,
             ]
 
             if images:
-                for img in images:
-                    cmd.extend(['--images', img])
+                img_paths = ','.join(images)
+                cmd.extend(['--images', img_paths])
+
+            if draft:
+                cmd.extend(['--draft', 'true'])
+
+            cmd.extend(['--format', 'json'])
+
+            logger.info(f"执行发布命令: opencli xiaohongshu publish...")
+            logger.info(f"标题: {title}")
 
             # 执行发布
             result = subprocess.run(
                 cmd,
-                cwd=self.skill_path,
                 capture_output=True,
                 text=True,
                 timeout=120
             )
 
             if result.returncode == 0:
-                logger.info(f"发布成功: {title[:50]}...")
+                logger.info(f"发布成功: {title}")
                 return {
                     'success': True,
                     'message': '发布成功',
@@ -94,31 +82,32 @@ class XiaohongshuPublisher:
             }
 
     def check_login(self) -> bool:
-        """检查小红书登录状态"""
+        """检查小红书登录状态（通过尝试获取用户信息）"""
         try:
-            cmd = ['python', 'scripts/cli.py', 'check-login']
+            # opencli xiaohongshu 没有直接的 check-login 命令
+            # 通过尝试获取创作者数据来判断是否登录
+            cmd = ['opencli', 'xiaohongshu', 'creator-profile', '--format', 'json']
             result = subprocess.run(
                 cmd,
-                cwd=self.skill_path,
                 capture_output=True,
                 text=True,
                 timeout=30
             )
-            return result.returncode == 0 and '登录' in result.stdout
+            # 如果能成功获取数据，说明已登录
+            return result.returncode == 0 and 'error' not in result.stderr.lower()
         except Exception as e:
             logger.error(f"检查登录状态失败: {e}")
             return False
 
-    def login(self) -> dict:
-        """获取登录二维码"""
+    def get_login_status(self) -> dict:
+        """获取登录状态详情"""
         try:
-            cmd = ['python', 'scripts/cli.py', 'login']
+            cmd = ['opencli', 'xiaohongshu', 'creator-profile', '--format', 'json']
             result = subprocess.run(
                 cmd,
-                cwd=self.skill_path,
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=30
             )
             return {
                 'success': result.returncode == 0,

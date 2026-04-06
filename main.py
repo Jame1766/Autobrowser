@@ -88,10 +88,15 @@ class AutoBrowserApp:
                 logger.warning(f"今日已发布 {today_count} 条，达到上限")
                 return
 
+            # 准备图片（使用默认图片或从内容中提取）
+            images = ['/Users/wangzihan/Autobrowser/assets/default.jpg']
+
             # 执行发布
             result = self.publisher.publish(
                 title=modified['title'],
-                content=modified['content']
+                content=modified['content'],
+                images=images,
+                draft=False
             )
 
             # 5. 记录结果
