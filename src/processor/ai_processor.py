@@ -253,44 +253,30 @@ class AIContentProcessor:
         return new_title
 
     def _generate_body(self, title: str, content: str, platform: str) -> str:
-        """生成小红书正文"""
-        # 清理内容
+        """生成小红书正文 - 简化版确保发布成功"""
+        # 清理内容，只取前2段
         paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
-        main_content = ' '.join(paragraphs[:3])  # 取前3段
+        main_content = ' '.join(paragraphs[:2])
 
-        # 如果内容太长，截断
-        if len(main_content) > 500:
-            main_content = main_content[:497] + "..."
+        # 限制长度（确保发布成功）
+        if len(main_content) > 200:
+            main_content = main_content[:197] + "..."
 
-        # 构建正文结构
-        body_parts = []
-
-        # 1. Hook（引起兴趣）
+        # 简化正文结构（避免内容过长导致发布失败）
         platform_name = "推特" if platform == "twitter" else "Reddit"
-        body_parts.append(f"🔥 这个在 {platform_name} 上火了！")
 
-        # 2. What（是什么）
-        body_parts.append(f"\n📌 {title}")
+        body = f"""🔥 这个在 {platform_name} 上火了！
 
-        # 3. Why（为什么重要）
-        body_parts.append(f"\n💡 核心看点：")
-        body_parts.append(main_content[:200] + "..." if len(main_content) > 200 else main_content)
+📌 {title}
 
-        # 4. Key Insight（关键洞察）
-        body_parts.append("\n✨ 为什么值得关注：")
-        body_parts.append("• 这是最新的 AI 进展")
-        body_parts.append("• 对普通用户也有实用价值")
-        body_parts.append("• 可能会改变未来的工作方式")
+💡 {main_content}
 
-        # 5. CTA（引导互动）
-        body_parts.append("\n💬 你怎么看？")
-        body_parts.append("觉得这个技术有用吗？")
-        body_parts.append("评论区聊聊你的想法～")
+✨ 值得关注！
 
-        # 6. Tags（话题标签）
-        body_parts.append("\n🏷️ #AI资讯 #人工智能 #科技前沿 #AIGC #AI工具")
+💬 评论区聊聊你的想法～
 
-        # 7. 来源提示
-        body_parts.append("\n🔗 详情见评论")
+🏷️ #AI资讯 #人工智能 #科技前沿 #AIGC
 
-        return '\n'.join(body_parts)
+🔗 详情见评论"""
+
+        return body
