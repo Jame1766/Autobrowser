@@ -33,39 +33,82 @@ class XiaohongshuPublisher:
             if len(title) > 20:
                 title = title[:19] + "…"
 
+            # 检查默认图片是否存在
+            default_image = '/Users/wangzihan/Autobrowser/assets/default.jpg'
+            if not Path(default_image).exists():
+                logger.warning(f"默认图片不存在: {default_image}")
+                images = []
+            else:
+                images = [default_image]
+
+            # 构建话题标签
+            topics = "AI,人工智能,科技前沿,AIGC"
+
             # 构建 opencli 命令
             cmd = [
                 'opencli', 'xiaohongshu', 'publish', content,
                 '--title', title,
+                '--topics', topics,
             ]
 
             if images:
                 img_paths = ','.join(images)
                 cmd.extend(['--images', img_paths])
+                logger.info(f"使用图片: {img_paths}")
 
             if draft:
                 cmd.extend(['--draft', 'true'])
 
-            cmd.extend(['--format', 'json'])
+            cmd.extend(['--format', 'json', '--verbose'])
 
             logger.info(f"执行发布命令: opencli xiaohongshu publish...")
             logger.info(f"标题: {title}")
+            logger.info(f"话题: {topics}")
 
             # 执行发布
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=120
+                timeout=180  # 增加超时时间到3分钟
             )
 
+            # 记录完整输出用于调试
+            logger.info(f"OpenCLI stdout: {result.stdout}")
+            logger.info(f"OpenCLI stderr: {result.stderr}")
+            logger.info(f"OpenCLI returncode: {result.returncode}")
+
             if result.returncode == 0:
-                logger.info(f"发布成功: {title}")
-                return {
-                    'success': True,
-                    'message': '发布成功',
-                    'output': result.stdout
-                }
+                # 解析 JSON 输出检查 isSuccess
+                try:
+                    import json
+                    output_data = json.loads(result.stdout)
+                    is_success = output_data.get('isSuccess', False)
+                    detail = output_data.get('detail', '')
+
+                    if is_success:
+                        logger.info(f"发布成功: {title}")
+                        return {
+                            'success': True,
+                            'message': '发布成功',
+                            'output': result.stdout,
+                            'detail': detail
+                        }
+                    else:
+                        logger.error(f"发布失败 (isSuccess=false): {detail}")
+                        return {
+                            'success': False,
+                            'message': f'发布失败: {detail}',
+                            'output': result.stdout
+                        }
+                except json.JSONDecodeError:
+                    logger.warning("无法解析 JSON 输出，按返回码判断成功")
+                    logger.info(f"发布成功: {title}")
+                    return {
+                        'success': True,
+                        'message': '发布成功',
+                        'output': result.stdout
+                    }
             else:
                 logger.error(f"发布失败: {result.stderr}")
                 return {
