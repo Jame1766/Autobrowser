@@ -28,11 +28,11 @@ class AIContentProcessor:
 
     # 标题模板
     TITLE_TEMPLATES = [
-        "🔥 {topic}重磅发布！AI圈都炸了",
-        "💡 救命！这个{topic}技巧让我效率翻倍",
-        "🚀 {topic}必备！大厂都在用的黑科技",
-        "⚡️ 别再直接问AI了！试试这个{topic}方法",
-        "🎯 反直觉！{topic}的正确打开方式"
+        "🔥{topic}重磅发布！AI圈炸了",
+        "💡救命！这个{topic}技巧",
+        "🚀{topic}必备！大厂黑科技",
+        "⚡️别再直接问AI了！",
+        "🎯{topic}正确打开方式"
     ]
 
     def __init__(self):

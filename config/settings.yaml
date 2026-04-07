@@ -35,7 +35,7 @@ xiaohongshu:
 
 # Kimi AI 配置
 kimi:
-  api_key: ""  # 请填写你的 Kimi API Key: sk-zBSh23bHsb1780TPkaYz9eK324qWerCHD294fLKcBWVqW2KX
+  api_key: "sk-zBSh23bHsb1780TPkaYz9eK324qWerCHD294fLKcBWVqW2KX"
   api_base: "https://api.moonshot.cn/v1"
   model: "kimi-k2.5"
   temperature: 1  # kimi-k2.5 只支持 temperature=1
