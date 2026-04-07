@@ -14,8 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src.config import config
 from src.crawler.opencli_crawler import ContentCrawler
 from src.storage.content_store import ContentStore
-from src.processor.ai_processor import AIContentProcessor
-from src.processor.kimi_processor import KimiProcessor
+from src.processor.ai_processor import AIContentProcessor, AIProcessorFactory, get_ai_processor
 from src.publisher.xiaohongshu import XiaohongshuPublisher
 from src.scheduler.task_scheduler import TaskScheduler
 
@@ -45,7 +44,7 @@ class AutoBrowserApp:
         self.crawler = ContentCrawler(config)
         self.store = ContentStore()
         self.ai_processor = AIContentProcessor()
-        self.kimi_processor = KimiProcessor()
+        self.ai_content_processor = get_ai_processor()
         self.publisher = XiaohongshuPublisher(
             chrome_port=config.xiaohongshu.get('chrome_port', 9222)
         )
@@ -85,22 +84,22 @@ class AutoBrowserApp:
             )
             logger.info(f"选中内容: {selected_content['title'][:50]}...")
 
-            # 3. Kimi AI 处理
-            logger.info("步骤 3/6: Kimi AI 处理")
-            kimi_result = self.kimi_processor.process_content(selected_content)
-            if not kimi_result:
-                logger.error("Kimi 处理失败，使用备用方案")
-                kimi_result = self.ai_processor.modify_for_xiaohongshu(selected_content)
-                kimi_result['cover_text'] = kimi_result['title'][:10]
+            # 3. AI 内容处理（Kimi/DeepSeek）
+            logger.info("步骤 3/6: AI 内容处理")
+            ai_result = self.ai_content_processor.process_content(selected_content)
+            if not ai_result:
+                logger.error("AI 处理失败，使用备用方案")
+                ai_result = self.ai_processor.modify_for_xiaohongshu(selected_content)
+                ai_result['cover_text'] = ai_result['title'][:10]
 
-            logger.info(f"Kimi 生成标题: {kimi_result['title']}")
-            logger.info(f"封面文字: {kimi_result.get('cover_text', 'AI资讯')}")
+            logger.info(f"AI 生成标题: {ai_result['title']}")
+            logger.info(f"封面文字: {ai_result.get('cover_text', 'AI资讯')}")
 
             # 4. 生成封面图片（如果启用）
             cover_path = None
             if self.cover_enabled and COVER_GENERATION_AVAILABLE:
                 logger.info("步骤 4/6: 生成封面图片")
-                cover_text = kimi_result.get('cover_text', kimi_result['title'][:10])
+                cover_text = ai_result.get('cover_text', ai_result['title'][:10])
                 cover_path = self._generate_cover_image(cover_text)
                 if cover_path:
                     logger.info(f"封面生成成功: {cover_path}")

@@ -33,12 +33,24 @@ xiaohongshu:
   chrome_port: 9222
   timeout: 30
 
-# Kimi AI 配置
-kimi:
-  api_key: "sk-zBSh23bHsb1780TPkaYz9eK324qWerCHD294fLKcBWVqW2KX"
-  api_base: "https://api.moonshot.cn/v1"
-  model: "kimi-k2.5"
-  temperature: 1  # kimi-k2.5 只支持 temperature=1
+# AI 配置（支持多模型切换）
+ai:
+  # 当前使用的 AI 提供商: kimi / deepseek
+  provider: "deepseek"
+
+  # Kimi 配置
+  kimi:
+    api_key: "sk-zBSh23bHsb1780TPkaYz9eK324qWerCHD294fLKcBWVqW2KX"
+    api_base: "https://api.moonshot.cn/v1"
+    model: "kimi-k2.5"
+    temperature: 1
+
+  # DeepSeek 配置
+  deepseek:
+    api_key: "sk-968a580a93dc42b191ab2b36421e333b"
+    api_base: "https://api.deepseek.com"
+    model: "deepseek-chat"
+    temperature: 0.7
 
 # 封面生成配置
 cover:

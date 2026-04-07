@@ -1,282 +1,407 @@
 """
-AI 内容处理模块
-根据产品经理制定的规则实现内容审核和修改
+AI 处理模块（支持多模型：Kimi/DeepSeek）
+统一的 AI 内容处理接口
 """
 import json
 import logging
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+import os
+import requests
+from typing import Dict, Any, Optional, List
+from abc import ABC, abstractmethod
+
+from src.config import config
 
 logger = logging.getLogger(__name__)
 
-class AIContentProcessor:
-    """AI 内容处理器 - 实现产品经理制定的评分和改写规则"""
 
-    # 权威性来源关键词
-    AUTHORITATIVE_SOURCES = [
-        'openai', 'anthropic', 'claude', 'google', 'deepmind',
-        'microsoft', 'meta', 'nvidia', 'stability ai',
-        'mistral', 'cohere', 'ai2'
-    ]
+class BaseAIProcessor(ABC):
+    """AI 处理器基类"""
 
-    # 爆款话题关键词
-    TRENDING_TOPICS = [
-        'gpt', 'claude', 'llama', 'gemini', 'midjourney',
-        'stable diffusion', 'sora', 'agent', 'rag', 'fine-tuning',
-        'multimodal', 'reasoning', 'code generation'
-    ]
+    def __init__(self, provider: str):
+        self.provider = provider
+        self.api_key = self._get_api_key()
+        self.api_base = self._get_api_base()
+        self.model = self._get_model()
+        self.temperature = self._get_temperature()
 
-    # 标题模板
-    TITLE_TEMPLATES = [
-        "🔥{topic}重磅发布！AI圈炸了",
-        "💡救命！这个{topic}技巧",
-        "🚀{topic}必备！大厂黑科技",
-        "⚡️别再直接问AI了！",
-        "🎯{topic}正确打开方式"
-    ]
+    def _get_api_key(self) -> str:
+        """获取 API Key（优先环境变量）"""
+        env_var = f"{self.provider.upper()}_API_KEY"
+        return os.environ.get(env_var, config.get(f'ai.{self.provider}.api_key', ''))
 
-    def __init__(self):
-        self.name = "AIContentProcessor"
+    def _get_api_base(self) -> str:
+        """获取 API Base URL"""
+        return config.get(f'ai.{self.provider}.api_base', '')
 
-    def review_and_select(self, contents: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _get_model(self) -> str:
+        """获取模型名称"""
+        return config.get(f'ai.{self.provider}.model', '')
+
+    def _get_temperature(self) -> float:
+        """获取 temperature"""
+        return config.get(f'ai.{self.provider}.temperature', 1.0)
+
+    def process_content(self, content: Dict[str, Any]) -> Optional[Dict[str, str]]:
         """
-        AI 审核评分（产品经理规则）
-
-        评分标准（满分11分）：
-        - 时效性（24-48小时内）：+3分
-        - 来源权威性（大厂/官方）：+3分
-        - 话题热度（互动量）：+2分
-        - 实用价值：+2分
-        - 独家性：+1分
-
-        入选门槛：≥5分，且必须有时效性
-        发布决策：≥6分立即发布，4-6分可选发布，<4分跳过
-
-        Args:
-            contents: 待审核的内容列表
-
-        Returns:
-            选中的最佳内容，如果没有合适的返回 None
-        """
-        if not contents:
-            logger.info("没有内容需要审核")
-            return None
-
-        scored_contents = []
-        for content in contents:
-            score, details = self._calculate_detailed_score(content)
-            scored_contents.append({
-                'score': score,
-                'details': details,
-                'content': content
-            })
-
-        # 按分数排序
-        scored_contents.sort(key=lambda x: x['score'], reverse=True)
-
-        # 选择最高分
-        best = scored_contents[0]
-        best_score = best['score']
-        best_content = best['content']
-
-        logger.info(f"AI 审核评分排名:")
-        for i, item in enumerate(scored_contents[:3], 1):
-            logger.info(f"  {i}. {item['content']['title'][:40]}... - {item['score']}分")
-
-        # 入选门槛：≥5分，且必须有时效性
-        if best_score >= 5.0 and best['details']['timeliness'] > 0:
-            decision = "立即发布" if best_score >= 6 else "可选发布"
-            logger.info(f"✅ 选中内容（{decision}）: {best_score}分")
-            return best_content
-        else:
-            logger.info(f"❌ 没有内容达到发布标准（最高分: {best_score}分）")
-            return None
-
-    def _calculate_detailed_score(self, content: Dict[str, Any]) -> tuple:
-        """
-        计算详细评分
-
-        Returns:
-            (总分, 评分详情)
-        """
-        score = 0.0
-        details = {
-            'timeliness': 0,
-            'authority': 0,
-            'engagement': 0,
-            'utility': 0,
-            'exclusivity': 0
-        }
-
-        text = (content.get('title', '') + ' ' + content.get('content', '')).lower()
-        engagement = content.get('engagement', {})
-
-        # 1. 时效性（24-48小时内）：+3分
-        created_at = content.get('created_at', '')
-        if created_at:
-            try:
-                # 尝试解析时间
-                content_time = self._parse_time(created_at)
-                if content_time:
-                    hours_ago = (datetime.now() - content_time).total_seconds() / 3600
-                    if hours_ago <= 24:
-                        details['timeliness'] = 3
-                    elif hours_ago <= 48:
-                        details['timeliness'] = 2
-                    elif hours_ago <= 72:
-                        details['timeliness'] = 1
-            except Exception:
-                pass
-        score += details['timeliness']
-
-        # 2. 来源权威性（大厂/官方）：+3分
-        author = content.get('author', '').lower()
-        for source in self.AUTHORITATIVE_SOURCES:
-            if source in text or source in author:
-                details['authority'] = 3
-                break
-        score += details['authority']
-
-        # 3. 话题热度（互动量）：+2分
-        if content['platform'] == 'twitter':
-            likes = engagement.get('likes', 0)
-            retweets = engagement.get('retweets', 0)
-            total = likes + retweets * 2
-            if total > 1000:
-                details['engagement'] = 2
-            elif total > 100:
-                details['engagement'] = 1
-        elif content['platform'] == 'reddit':
-            upvotes = engagement.get('upvotes', 0)
-            comments = engagement.get('comments', 0)
-            if upvotes > 500 or comments > 50:
-                details['engagement'] = 2
-            elif upvotes > 100 or comments > 10:
-                details['engagement'] = 1
-        score += details['engagement']
-
-        # 4. 实用价值（关键词匹配）：+2分
-        utility_keywords = ['tutorial', 'guide', 'how to', 'tips', 'tricks',
-                          'workflow', 'prompt', 'hack', '技巧', '教程']
-        for kw in utility_keywords:
-            if kw in text:
-                details['utility'] = 2
-                break
-        if details['utility'] == 0:
-            for topic in self.TRENDING_TOPICS:
-                if topic in text:
-                    details['utility'] = 1
-                    break
-        score += details['utility']
-
-        # 5. 独家性（较少见的关键词组合）：+1分
-        rare_keywords = ['breakthrough', 'exclusive', 'first look', '泄露', '首发']
-        for kw in rare_keywords:
-            if kw in text:
-                details['exclusivity'] = 1
-                break
-        score += details['exclusivity']
-
-        return score, details
-
-    def _parse_time(self, time_str: str) -> Optional[datetime]:
-        """解析时间字符串"""
-        formats = [
-            '%Y-%m-%dT%H:%M:%S.%fZ',
-            '%Y-%m-%dT%H:%M:%SZ',
-            '%a %b %d %H:%M:%S +0000 %Y',
-            '%Y-%m-%d %H:%M:%S'
-        ]
-        for fmt in formats:
-            try:
-                return datetime.strptime(time_str, fmt)
-            except ValueError:
-                continue
-        return None
-
-    def modify_for_xiaohongshu(self, content: Dict[str, Any]) -> Dict[str, str]:
-        """
-        将内容修改为适合小红书的格式
-
-        改写规则（产品经理规则）：
-        1. 标题设计（4种爆款模板）
-        2. 正文结构：Hook → What → Why → How → CTA → Tags
-        3. 语言风格：口语化、亲切、短句、适度情感表达
-        4. 去除外链，替换为"详情见评论"
+        处理内容，生成小红书标题和正文
 
         Args:
             content: 原始内容
 
         Returns:
-            修改后的标题和内容
+            处理后的标题、正文、封面文字
         """
+        if not self.api_key:
+            logger.error(f"{self.provider} API Key 未配置")
+            return None
+
+        try:
+            prompt = self._build_prompt(content)
+            response = self._call_api(prompt)
+
+            if not response:
+                return None
+
+            result = self._parse_response(response)
+            result = self._format_result(result)
+
+            logger.info(f"{self.provider} 处理完成")
+            logger.info(f"  标题: {result['title']}")
+            logger.info(f"  正文长度: {len(result['content'])} 字符")
+
+            return result
+
+        except Exception as e:
+            logger.exception(f"{self.provider} 处理失败: {e}")
+            return None
+
+    def _build_prompt(self, content: Dict[str, Any]) -> str:
+        """构建 Prompt"""
         original_title = content.get('title', '')
         original_content = content.get('content', '')
         platform = content.get('platform', '')
+        author = content.get('author', '')
+        engagement = content.get('engagement', {})
 
-        # 生成标题
-        modified_title = self._generate_title(original_title, original_content)
+        # 构建互动信息
+        engagement_info = ""
+        if platform == 'twitter':
+            likes = engagement.get('likes', 0)
+            retweets = engagement.get('retweets', 0)
+            engagement_info = f"点赞: {likes}, 转发: {retweets}"
+        elif platform == 'reddit':
+            upvotes = engagement.get('upvotes', 0)
+            comments = engagement.get('comments', 0)
+            engagement_info = f"赞同: {upvotes}, 评论: {comments}"
 
-        # 生成正文
-        modified_content = self._generate_body(original_title, original_content, platform)
+        return f"""你是一位专业的小红书内容运营专家。请将以下{platform}上的AI相关内容转化为适合小红书平台的中文笔记。
 
-        logger.info(f"✏️ AI 改写完成")
-        logger.info(f"   原标题: {original_title[:50]}...")
-        logger.info(f"   新标题: {modified_title}")
+## 原始内容
+
+**原标题（英文）**: {original_title}
+
+**正文内容**:
+{original_content[:1000]}
+
+**来源**: {platform}
+**作者**: {author}
+**互动数据**: {engagement_info}
+
+## 小红书转化要求
+
+请严格按照以下规则生成内容：
+
+### 1. 标题要求（必须遵守）
+- 长度：最多20个字（含emoji）
+- 风格：吸引眼球、有爆款潜质
+- 必须包含emoji（如🔥、💡、🚀、⚡️、🎯等）
+- 使用以下一种模板风格：
+  * 🔥 AI重磅发布！AI圈都炸了
+  * 💡 救命！这个AI工具让我效率翻倍
+  * 🚀 AI必备！大厂都在用的黑科技
+  * ⚡️ 别再直接问AI了！试试这个Prompt
+  * 🎯 反直觉！AI的正确打开方式
+
+### 2. 正文要求（必须遵守）
+- 总长度控制在200个字符以内（确保能自动发布成功）
+- 结构清晰，使用emoji分隔
+- 语言风格：口语化、亲切、短句
+- 必须包含以下部分：
+  * 🔥 Hook: 引起兴趣（1句）
+  * 📌 核心内容（2-3句，总结要点）
+  * ✨ 价值点（1句）
+  * 💬 CTA引导互动（1句）
+  * 🏷️ 话题标签（必须包含：#AI资讯 #人工智能 #科技前沿）
+  * 🔗 来源提示（"详情见评论"）
+
+### 3. 输出格式（必须严格遵守）
+请按照以下JSON格式输出，不要添加任何其他内容：
+
+```json
+{{
+  "title": "生成的标题（20字以内，带emoji）",
+  "content": "生成的正文（200字以内，使用\\n换行）",
+  "cover_text": "用于封面的文字（4-8个字，提炼标题核心）"
+}}
+```
+
+注意：
+1. 只输出JSON，不要有任何解释文字
+2. 确保JSON格式正确，可以被解析
+3. 标题和正文必须中文
+4. cover_text 用于生成封面图片，要简洁有力
+"""
+
+    @abstractmethod
+    def _call_api(self, prompt: str) -> Optional[str]:
+        """调用 AI API（子类实现）"""
+        pass
+
+    def _parse_response(self, response: str) -> Dict[str, str]:
+        """解析 AI 响应"""
+        try:
+            # 尝试直接解析 JSON
+            try:
+                data = json.loads(response)
+                return data
+            except json.JSONDecodeError:
+                pass
+
+            # 尝试从 markdown 代码块中提取
+            import re
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group(1))
+                return data
+
+            # 如果都没找到，返回原始内容
+            logger.warning(f"无法解析 {self.provider} 响应为 JSON，返回原始内容")
+            return {
+                'title': response[:20] if len(response) > 20 else response,
+                'content': response[:200] if len(response) > 200 else response,
+                'cover_text': 'AI资讯'
+            }
+
+        except Exception as e:
+            logger.exception(f"解析 {self.provider} 响应失败: {e}")
+            return {
+                'title': '🔥 AI资讯',
+                'content': '内容生成失败',
+                'cover_text': 'AI资讯'
+            }
+
+    def _format_result(self, data: dict) -> Dict[str, str]:
+        """格式化结果，确保长度限制"""
+        title = data.get('title', '🔥 AI资讯')
+        content = data.get('content', '')
+        cover_text = data.get('cover_text', 'AI资讯')
+
+        # 确保标题不超过20字
+        if len(title) >= 20:
+            title = title[:18] + '…'
+
+        # 确保内容不超过200字
+        if len(content) > 200:
+            content = content[:197] + '...'
+
+        # 确保封面文字不超过10字
+        if len(cover_text) > 10:
+            cover_text = cover_text[:9] + '…'
 
         return {
-            'title': modified_title,
-            'content': modified_content,
-            'original_url': content.get('url', '')
+            'title': title,
+            'content': content,
+            'cover_text': cover_text
         }
 
-    def _generate_title(self, title: str, content: str) -> str:
-        """生成爆款标题"""
-        text = (title + ' ' + content).lower()
 
-        # 提取核心话题
-        topic = "AI"
-        for t in self.TRENDING_TOPICS:
-            if t in text:
-                topic = t.title()
-                break
+class KimiProcessor(BaseAIProcessor):
+    """Kimi AI 处理器"""
 
-        # 选择模板
-        import random
-        template = random.choice(self.TITLE_TEMPLATES)
+    def __init__(self):
+        super().__init__('kimi')
+        # 设置默认值
+        if not self.api_base:
+            self.api_base = 'https://api.moonshot.cn/v1'
+        if not self.model:
+            self.model = 'kimi-k2.5'
 
-        # 生成标题（控制在20字以内）
-        new_title = template.format(topic=topic)
-        if len(new_title) > 20:
-            new_title = new_title[:19] + "…"
+    def _call_api(self, prompt: str) -> Optional[str]:
+        """调用 Kimi API"""
+        try:
+            # 优先使用 OpenAI SDK
+            try:
+                from openai import OpenAI
 
-        return new_title
+                client = OpenAI(
+                    api_key=self.api_key,
+                    base_url=self.api_base,
+                )
 
-    def _generate_body(self, title: str, content: str, platform: str) -> str:
-        """生成小红书正文 - 简化版确保发布成功"""
-        # 清理内容，只取前2段
-        paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
-        main_content = ' '.join(paragraphs[:2])
+                completion = client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "你是小红书内容运营专家，擅长将 AI 资讯转化为小红书爆款笔记格式。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=self.temperature
+                )
 
-        # 限制长度（确保发布成功）
-        if len(main_content) > 200:
-            main_content = main_content[:197] + "..."
+                return completion.choices[0].message.content
 
-        # 简化正文结构（避免内容过长导致发布失败）
-        platform_name = "推特" if platform == "twitter" else "Reddit"
+            except ImportError:
+                logger.warning("未安装 openai sdk，使用 requests 调用")
 
-        body = f"""🔥 这个在 {platform_name} 上火了！
+            # 使用 requests 直接调用
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
 
-📌 {title}
+            data = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": "你是小红书内容运营专家，擅长将 AI 资讯转化为小红书爆款笔记格式。"},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": self.temperature
+            }
 
-💡 {main_content}
+            response = requests.post(
+                f"{self.api_base}/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=60
+            )
 
-✨ 值得关注！
+            if response.status_code == 200:
+                result = response.json()
+                return result['choices'][0]['message']['content']
+            else:
+                logger.error(f"Kimi API 错误: {response.status_code} - {response.text}")
+                return None
 
-💬 评论区聊聊你的想法～
+        except Exception as e:
+            logger.exception(f"调用 Kimi API 失败: {e}")
+            return None
 
-🏷️ #AI资讯 #人工智能 #科技前沿 #AIGC
 
-🔗 详情见评论"""
+class DeepSeekProcessor(BaseAIProcessor):
+    """DeepSeek AI 处理器"""
 
-        return body
+    def __init__(self):
+        super().__init__('deepseek')
+        # 设置默认值
+        if not self.api_base:
+            self.api_base = 'https://api.deepseek.com'
+        if not self.model:
+            self.model = 'deepseek-chat'
+
+    def _call_api(self, prompt: str) -> Optional[str]:
+        """调用 DeepSeek API"""
+        try:
+            # 优先使用 OpenAI SDK（DeepSeek 兼容 OpenAI 接口）
+            try:
+                from openai import OpenAI
+
+                client = OpenAI(
+                    api_key=self.api_key,
+                    base_url=self.api_base,
+                )
+
+                completion = client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "你是小红书内容运营专家，擅长将 AI 资讯转化为小红书爆款笔记格式。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=self.temperature,
+                    stream=False
+                )
+
+                return completion.choices[0].message.content
+
+            except ImportError:
+                logger.warning("未安装 openai sdk，使用 requests 调用")
+
+            # 使用 requests 直接调用（DeepSeek 格式）
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+
+            data = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": "你是小红书内容运营专家，擅长将 AI 资讯转化为小红书爆款笔记格式。"},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": self.temperature,
+                "stream": False
+            }
+
+            response = requests.post(
+                f"{self.api_base}/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=60
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                return result['choices'][0]['message']['content']
+            else:
+                logger.error(f"DeepSeek API 错误: {response.status_code} - {response.text}")
+                return None
+
+        except Exception as e:
+            logger.exception(f"调用 DeepSeek API 失败: {e}")
+            return None
+
+
+class AIProcessorFactory:
+    """AI 处理器工厂"""
+
+    _processors = {
+        'kimi': KimiProcessor,
+        'deepseek': DeepSeekProcessor,
+    }
+
+    @classmethod
+    def get_processor(cls, provider: str = None) -> BaseAIProcessor:
+        """
+        获取 AI 处理器
+
+        Args:
+            provider: 模型提供商（kimi/deepseek），默认从配置读取
+
+        Returns:
+            AI 处理器实例
+        """
+        if not provider:
+            provider = config.get('ai.provider', 'kimi')
+
+        provider = provider.lower()
+
+        if provider not in cls._processors:
+            logger.error(f"不支持的 AI 提供商: {provider}，使用默认 Kimi")
+            provider = 'kimi'
+
+        logger.info(f"使用 AI 处理器: {provider}")
+        return cls._processors[provider]()
+
+    @classmethod
+    def register_processor(cls, name: str, processor_class: type):
+        """注册新的处理器"""
+        cls._processors[name.lower()] = processor_class
+
+
+# 兼容旧代码的导入
+# 使用工厂方法获取处理器实例
+def get_ai_processor(provider: str = None) -> BaseAIProcessor:
+    """获取 AI 处理器（兼容旧代码）"""
+    return AIProcessorFactory.get_processor(provider)
+
+
+# 为了向后兼容，保留 KimiProcessor 的直接导入
+__all__ = ['BaseAIProcessor', 'KimiProcessor', 'DeepSeekProcessor', 'AIProcessorFactory', 'get_ai_processor']
