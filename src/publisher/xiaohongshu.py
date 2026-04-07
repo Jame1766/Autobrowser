@@ -79,30 +79,46 @@ class XiaohongshuPublisher:
             logger.info(f"OpenCLI returncode: {result.returncode}")
 
             if result.returncode == 0:
-                # 解析 JSON 输出检查 isSuccess
+                # 解析 JSON 输出检查是否成功
                 try:
                     import json
                     output_data = json.loads(result.stdout)
-                    is_success = output_data.get('isSuccess', False)
-                    detail = output_data.get('detail', '')
+                    logger.info(f"OpenCLI 返回数据: {json.dumps(output_data, ensure_ascii=False, indent=2)}")
 
-                    if is_success:
-                        logger.info(f"发布成功: {title}")
+                    # OpenCLI 返回的是数组格式
+                    if isinstance(output_data, list) and len(output_data) > 0:
+                        item = output_data[0]
+                        status = item.get('status', '')
+                        detail = item.get('detail', '')
+
+                        # 判断是否成功：状态包含"成功"或"✅"
+                        is_success = '成功' in status or '✅' in status
+
+                        if is_success:
+                            logger.info(f"发布成功: {title}")
+                            return {
+                                'success': True,
+                                'message': status,
+                                'output': result.stdout,
+                                'detail': detail
+                            }
+                        else:
+                            logger.warning(f"发布状态异常: {status} - {detail}")
+                            return {
+                                'success': False,
+                                'message': status,
+                                'output': result.stdout,
+                                'detail': detail
+                            }
+                    else:
+                        logger.warning(f"意外的输出格式: {output_data}")
                         return {
                             'success': True,
-                            'message': '发布成功',
-                            'output': result.stdout,
-                            'detail': detail
-                        }
-                    else:
-                        logger.error(f"发布失败 (isSuccess=false): {detail}")
-                        return {
-                            'success': False,
-                            'message': f'发布失败: {detail}',
+                            'message': '命令执行成功但格式异常',
                             'output': result.stdout
                         }
-                except json.JSONDecodeError:
-                    logger.warning("无法解析 JSON 输出，按返回码判断成功")
+                except json.JSONDecodeError as e:
+                    logger.warning(f"无法解析 JSON 输出: {e}")
                     logger.info(f"发布成功: {title}")
                     return {
                         'success': True,

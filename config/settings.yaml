@@ -33,6 +33,19 @@ xiaohongshu:
   chrome_port: 9222
   timeout: 30
 
+# Kimi AI 配置
+kimi:
+  api_key: ""  # 请填写你的 Kimi API Key
+  api_base: "https://api.moonshot.cn/v1"
+  model: "moonshot-v1-8k"
+  temperature: 0.7
+
+# 封面生成配置
+cover:
+  enabled: true
+  output_dir: "assets/covers"
+  default_template: "gradient"  # 封面模板风格
+
 # 日志配置
 logging:
   level: INFO
