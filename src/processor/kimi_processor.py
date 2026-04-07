@@ -4,6 +4,7 @@ Kimi AI 处理模块
 """
 import json
 import logging
+import os
 import requests
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -16,13 +17,14 @@ class KimiProcessor:
     """Kimi AI 内容处理器"""
 
     def __init__(self):
-        self.api_key = config.get('kimi.api_key', '')
+        # 优先从环境变量读取 API Key，其次从配置文件读取
+        self.api_key = os.environ.get('KIMI_API_KEY', config.get('kimi.api_key', ''))
         self.api_base = config.get('kimi.api_base', 'https://api.moonshot.cn/v1')
-        self.model = config.get('kimi.model', 'moonshot-v1-8k')
-        self.temperature = config.get('kimi.temperature', 0.7)
+        self.model = config.get('kimi.model', 'kimi-k2.5')
+        self.temperature = config.get('kimi.temperature', 1.0)
 
         if not self.api_key:
-            logger.warning("Kimi API Key 未配置，请在 config/settings.yaml 中设置")
+            logger.warning("Kimi API Key 未配置，请在 config/settings.yaml 中设置或通过环境变量 KIMI_API_KEY 设置")
 
     def process_content(self, content: Dict[str, Any]) -> Optional[Dict[str, str]]:
         """
