@@ -8,6 +8,7 @@ import os
 import requests
 from typing import Dict, Any, Optional, List
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 
 from src.config import config
 
@@ -403,5 +404,212 @@ def get_ai_processor(provider: str = None) -> BaseAIProcessor:
     return AIProcessorFactory.get_processor(provider)
 
 
-# 为了向后兼容，保留 KimiProcessor 的直接导入
-__all__ = ['BaseAIProcessor', 'KimiProcessor', 'DeepSeekProcessor', 'AIProcessorFactory', 'get_ai_processor']
+# 本地 AI 内容处理器（用于审核和备用）
+class AIContentProcessor:
+    """AI 内容处理器 - 本地审核和改写规则"""
+
+    # 权威性来源关键词
+    AUTHORITATIVE_SOURCES = [
+        'openai', 'anthropic', 'claude', 'google', 'deepmind',
+        'microsoft', 'meta', 'nvidia', 'stability ai',
+        'mistral', 'cohere', 'ai2'
+    ]
+
+    # 爆款话题关键词
+    TRENDING_TOPICS = [
+        'gpt', 'claude', 'llama', 'gemini', 'midjourney',
+        'stable diffusion', 'sora', 'agent', 'rag', 'fine-tuning',
+        'multimodal', 'reasoning', 'code generation'
+    ]
+
+    # 标题模板
+    TITLE_TEMPLATES = [
+        "🔥{topic}重磅发布！AI圈炸了",
+        "💡救命！这个{topic}技巧",
+        "🚀{topic}必备！大厂黑科技",
+        "⚡️别再直接问AI了！",
+        "🎯{topic}正确打开方式"
+    ]
+
+    def __init__(self):
+        self.name = "AIContentProcessor"
+
+    def review_and_select(self, contents: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """AI 审核评分"""
+        if not contents:
+            logger.info("没有内容需要审核")
+            return None
+
+        scored_contents = []
+        for content in contents:
+            score, details = self._calculate_detailed_score(content)
+            scored_contents.append({
+                'score': score,
+                'details': details,
+                'content': content
+            })
+
+        scored_contents.sort(key=lambda x: x['score'], reverse=True)
+        best = scored_contents[0]
+        best_score = best['score']
+
+        logger.info(f"AI 审核评分排名:")
+        for i, item in enumerate(scored_contents[:3], 1):
+            logger.info(f"  {i}. {item['content']['title'][:40]}... - {item['score']}分")
+
+        if best_score >= 5.0 and best['details']['timeliness'] > 0:
+            decision = "立即发布" if best_score >= 6 else "可选发布"
+            logger.info(f"✅ 选中内容（{decision}）: {best_score}分")
+            return best['content']
+        else:
+            logger.info(f"❌ 没有内容达到发布标准（最高分: {best_score}分）")
+            return None
+
+    def _calculate_detailed_score(self, content: Dict[str, Any]) -> tuple:
+        """计算详细评分"""
+        score = 0.0
+        details = {'timeliness': 0, 'authority': 0, 'engagement': 0, 'utility': 0, 'exclusivity': 0}
+
+        text = (content.get('title', '') + ' ' + content.get('content', '')).lower()
+        engagement = content.get('engagement', {})
+
+        # 时效性
+        created_at = content.get('created_at', '')
+        if created_at:
+            try:
+                from datetime import datetime
+                content_time = self._parse_time(created_at)
+                if content_time:
+                    hours_ago = (datetime.now() - content_time).total_seconds() / 3600
+                    if hours_ago <= 24:
+                        details['timeliness'] = 3
+                    elif hours_ago <= 48:
+                        details['timeliness'] = 2
+                    elif hours_ago <= 72:
+                        details['timeliness'] = 1
+            except Exception:
+                pass
+        score += details['timeliness']
+
+        # 来源权威性
+        author = content.get('author', '').lower()
+        for source in self.AUTHORITATIVE_SOURCES:
+            if source in text or source in author:
+                details['authority'] = 3
+                break
+        score += details['authority']
+
+        # 话题热度
+        if content['platform'] == 'twitter':
+            likes = engagement.get('likes', 0)
+            retweets = engagement.get('retweets', 0)
+            total = likes + retweets * 2
+            if total > 1000:
+                details['engagement'] = 2
+            elif total > 100:
+                details['engagement'] = 1
+        elif content['platform'] == 'reddit':
+            upvotes = engagement.get('upvotes', 0)
+            comments = engagement.get('comments', 0)
+            if upvotes > 500 or comments > 50:
+                details['engagement'] = 2
+            elif upvotes > 100 or comments > 10:
+                details['engagement'] = 1
+        score += details['engagement']
+
+        # 实用价值
+        utility_keywords = ['tutorial', 'guide', 'how to', 'tips', 'tricks', 'workflow', 'prompt']
+        for kw in utility_keywords:
+            if kw in text:
+                details['utility'] = 2
+                break
+        score += details['utility']
+
+        # 独家性
+        rare_keywords = ['breakthrough', 'exclusive', 'first look']
+        for kw in rare_keywords:
+            if kw in text:
+                details['exclusivity'] = 1
+                break
+        score += details['exclusivity']
+
+        return score, details
+
+    def _parse_time(self, time_str: str) -> Optional[datetime]:
+        """解析时间字符串"""
+        formats = [
+            '%Y-%m-%dT%H:%M:%S.%fZ',
+            '%Y-%m-%dT%H:%M:%SZ',
+            '%a %b %d %H:%M:%S +0000 %Y',
+            '%Y-%m-%d %H:%M:%S'
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(time_str, fmt)
+            except ValueError:
+                continue
+        return None
+
+    def modify_for_xiaohongshu(self, content: Dict[str, Any]) -> Dict[str, str]:
+        """将内容修改为适合小红书的格式（备用方案）"""
+        original_title = content.get('title', '')
+        original_content = content.get('content', '')
+        platform = content.get('platform', '')
+
+        modified_title = self._generate_title(original_title, original_content)
+        modified_content = self._generate_body(original_title, original_content, platform)
+
+        logger.info(f"✏️ AI 改写完成")
+        logger.info(f"   原标题: {original_title[:50]}...")
+        logger.info(f"   新标题: {modified_title}")
+
+        return {
+            'title': modified_title,
+            'content': modified_content,
+            'cover_text': modified_title[:10]
+        }
+
+    def _generate_title(self, title: str, content: str) -> str:
+        """生成爆款标题"""
+        text = (title + ' ' + content).lower()
+        topic = "AI"
+        for t in self.TRENDING_TOPICS:
+            if t in text:
+                topic = t.title()
+                break
+        import random
+        template = random.choice(self.TITLE_TEMPLATES)
+        new_title = template.format(topic=topic)
+        if len(new_title) > 20:
+            new_title = new_title[:18] + "…"
+        return new_title
+
+    def _generate_body(self, title: str, content: str, platform: str) -> str:
+        """生成小红书正文"""
+        paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
+        main_content = ' '.join(paragraphs[:2])
+        if len(main_content) > 200:
+            main_content = main_content[:197] + "..."
+        platform_name = "推特" if platform == "twitter" else "Reddit"
+
+        body = f"""🔥 这个在 {platform_name} 上火了！
+
+📌 {title}
+
+💡 {main_content}
+
+✨ 值得关注！
+
+💬 评论区聊聊你的想法～
+
+🏷️ #AI资讯 #人工智能 #科技前沿 #AIGC
+
+🔗 详情见评论"""
+        return body
+
+
+# 导出所有类
+__all__ = [
+    'BaseAIProcessor', 'KimiProcessor', 'DeepSeekProcessor',
+    'AIProcessorFactory', 'get_ai_processor', 'AIContentProcessor'
+]

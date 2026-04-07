@@ -14,7 +14,8 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src.config import config
 from src.crawler.opencli_crawler import ContentCrawler
 from src.storage.content_store import ContentStore
-from src.processor.ai_processor import AIContentProcessor, AIProcessorFactory, get_ai_processor
+from src.processor.content_reviewer import AIContentProcessor
+from src.processor.ai_processor import AIProcessorFactory, get_ai_processor
 from src.publisher.xiaohongshu import XiaohongshuPublisher
 from src.scheduler.task_scheduler import TaskScheduler
 
@@ -134,8 +135,8 @@ class AutoBrowserApp:
 
             # 执行发布
             result = self.publisher.publish(
-                title=kimi_result['title'],
-                content=kimi_result['content'],
+                title=ai_result['title'],
+                content=ai_result['content'],
                 images=images,
                 draft=False
             )
@@ -213,10 +214,12 @@ class AutoBrowserApp:
             logger.warning("小红书未登录，请先执行登录流程")
             return False
 
-        # 检查 Kimi API Key
-        if not self.kimi_processor.api_key:
-            logger.warning("Kimi API Key 未配置，请在 config/settings.yaml 中设置")
-            logger.warning("将使用本地 AI 处理作为备用方案")
+        # 检查 AI API Key（根据配置的提供商）
+        provider = config.get('ai.provider', 'deepseek')
+        if not self.ai_content_processor.api_key:
+            logger.warning(f"{provider} API Key 未配置，将使用本地 AI 处理作为备用方案")
+        else:
+            logger.info(f"使用 AI 提供商: {provider}")
 
         logger.info("环境检查通过")
         return True
@@ -252,9 +255,9 @@ def main():
             'created_at': '2026-04-07',
             'engagement': {'likes': 5000, 'retweets': 2000}
         }
-        result = app.kimi_processor.process_content(test_content)
+        result = app.ai_content_processor.process_content(test_content)
         if result:
-            print("Kimi 处理结果:")
+            print("AI 处理结果:")
             print(f"标题: {result['title']}")
             print(f"内容: {result['content']}")
             print(f"封面文字: {result.get('cover_text', '')}")
