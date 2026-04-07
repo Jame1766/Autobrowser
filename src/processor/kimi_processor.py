@@ -242,9 +242,9 @@ class KimiProcessor:
         content = data.get('content', '')
         cover_text = data.get('cover_text', 'AI资讯')
 
-        # 确保标题不超过20字
-        if len(title) > 20:
-            title = title[:19] + '…'
+        # 确保标题不超过20字（严格限制，超过或等于20都截断）
+        if len(title) >= 20:
+            title = title[:18] + '…'
 
         # 确保内容不超过200字
         if len(content) > 200:

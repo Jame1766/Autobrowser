@@ -2,6 +2,7 @@
 小红书发布模块
 使用 OpenCLI 发布内容
 """
+import os
 import subprocess
 import logging
 from typing import Optional
@@ -29,9 +30,9 @@ class XiaohongshuPublisher:
             发布结果
         """
         try:
-            # 确保标题不超过20字
-            if len(title) > 20:
-                title = title[:19] + "…"
+            # 确保标题不超过20字（严格限制）
+            if len(title) >= 20:
+                title = title[:18] + "…"
 
             # 检查图片路径
             if images:
@@ -78,11 +79,16 @@ class XiaohongshuPublisher:
             logger.info(f"话题: {topics}")
 
             # 执行发布
+            # 设置更长的超时时间（3分钟）
+            env = os.environ.copy()
+            env['OPENCLI_BROWSER_COMMAND_TIMEOUT'] = '180'
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=180  # 增加超时时间到3分钟
+                timeout=200,  # 增加超时时间到3分20秒
+                env=env
             )
 
             # 记录完整输出用于调试
