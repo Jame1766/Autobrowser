@@ -121,8 +121,15 @@ class AutoBrowserApp:
                 return
 
             # 准备图片（优先使用生成的封面）
-            if cover_path and Path(cover_path).exists():
-                images = [cover_path]
+            if cover_path:
+                # 转换为绝对路径并检查文件是否存在
+                cover_path_abs = Path(cover_path).resolve()
+                if cover_path_abs.exists():
+                    images = [str(cover_path_abs)]
+                    logger.info(f"使用生成的封面: {cover_path_abs}")
+                else:
+                    logger.warning(f"生成的封面不存在: {cover_path_abs}")
+                    images = ['/Users/wangzihan/Autobrowser/assets/default.jpg']
             else:
                 images = ['/Users/wangzihan/Autobrowser/assets/default.jpg']
 
