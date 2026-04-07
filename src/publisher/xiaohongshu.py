@@ -33,13 +33,25 @@ class XiaohongshuPublisher:
             if len(title) > 20:
                 title = title[:19] + "…"
 
-            # 检查默认图片是否存在
-            default_image = '/Users/wangzihan/Autobrowser/assets/default.jpg'
-            if not Path(default_image).exists():
-                logger.warning(f"默认图片不存在: {default_image}")
-                images = []
-            else:
-                images = [default_image]
+            # 检查图片路径
+            if images:
+                # 使用传入的图片
+                valid_images = []
+                for img in images:
+                    if Path(img).exists():
+                        valid_images.append(img)
+                    else:
+                        logger.warning(f"图片不存在: {img}")
+                images = valid_images
+
+            # 如果没有有效图片，使用默认图片
+            if not images:
+                default_image = '/Users/wangzihan/Autobrowser/assets/default.jpg'
+                if Path(default_image).exists():
+                    images = [default_image]
+                else:
+                    logger.warning(f"默认图片不存在: {default_image}")
+                    images = []
 
             # 构建话题标签
             topics = "AI,人工智能,科技前沿,AIGC"
