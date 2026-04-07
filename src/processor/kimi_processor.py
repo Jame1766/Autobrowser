@@ -102,11 +102,11 @@ class KimiProcessor:
 - 风格：吸引眼球、有爆款潜质
 - 必须包含emoji（如🔥、💡、🚀、⚡️、🎯等）
 - 使用以下一种模板风格：
-  * 🔥 {话题}重磅发布！AI圈都炸了
-  * 💡 救命！这个{话题}让我效率翻倍
-  * 🚀 {话题}必备！大厂都在用的黑科技
-  * ⚡️ 别再直接问AI了！试试这个{话题}
-  * 🎯 反直觉！{话题}的正确打开方式
+  * 🔥 AI重磅发布！AI圈都炸了
+  * 💡 救命！这个AI工具让我效率翻倍
+  * 🚀 AI必备！大厂都在用的黑科技
+  * ⚡️ 别再直接问AI了！试试这个Prompt
+  * 🎯 反直觉！AI的正确打开方式
 
 ### 2. 正文要求（必须遵守）
 - 总长度控制在200个字符以内（确保能自动发布成功）
@@ -141,8 +141,32 @@ class KimiProcessor:
         return prompt
 
     def _call_api(self, prompt: str) -> Optional[str]:
-        """调用 Kimi API"""
+        """调用 Kimi API - 兼容 OpenAI SDK 格式"""
         try:
+            # 尝试使用 OpenAI SDK 格式（推荐）
+            try:
+                from openai import OpenAI
+
+                client = OpenAI(
+                    api_key=self.api_key,
+                    base_url=self.api_base,
+                )
+
+                completion = client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "你是小红书内容运营专家，擅长将 AI 资讯转化为小红书爆款笔记格式。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=self.temperature
+                )
+
+                return completion.choices[0].message.content
+
+            except ImportError:
+                # 如果没有 openai sdk，使用 requests 直接调用
+                logger.warning("未安装 openai sdk，使用 requests 调用")
+
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
@@ -151,10 +175,8 @@ class KimiProcessor:
             data = {
                 "model": self.model,
                 "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
+                    {"role": "system", "content": "你是小红书内容运营专家，擅长将 AI 资讯转化为小红书爆款笔记格式。"},
+                    {"role": "user", "content": prompt}
                 ],
                 "temperature": self.temperature
             }

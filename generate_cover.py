@@ -1,0 +1,58 @@
+from playwright.sync_api import sync_playwright
+import time
+import os
+
+def generate_cover(text, output_path="cover.png"):
+    # 确保输出目录存在
+    output_dir = os.path.dirname(output_path) or "."
+    os.makedirs(output_dir, exist_ok=True)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+
+        # 设置下载行为
+        context = browser.new_context()
+        page = context.new_page()
+
+        try:
+            print("[1/5] 打开网页...")
+            page.goto("https://md2card.cn/zh/cover", timeout=60000)
+            page.wait_for_timeout(3000)
+
+            print("[2/5] 输入文字...")
+            textarea_xpath = "xpath=/html/body/main/div/div/div/div[2]/div/div[1]/textarea"
+            page.locator(textarea_xpath).fill(text)
+            page.wait_for_timeout(500)
+
+            print("[3/5] 点击生成按钮...")
+            button_xpath = "xpath=/html/body/main/div/div/div/div[2]/div/div[2]/div[2]/button[2]"
+            page.locator(button_xpath).click()
+
+            print("[4/5] 等待生成图片 (5s)...")
+            page.wait_for_timeout(5000)
+
+            print("[5/5] 点击下载按钮...")
+            # 监听下载事件
+            with page.expect_download() as download_info:
+                download_xpath = "xpath=/html/body/main/div/div/div/div[4]/div/div[3]/div/div[2]/button"
+                page.locator(download_xpath).click()
+
+            download = download_info.value
+            # 保存文件
+            download.save_as(output_path)
+
+            print(f"完成! 封面已保存到: {output_path}")
+
+        except Exception as e:
+            print(f"错误: {e}")
+            page.screenshot(path="error.png")
+
+        finally:
+            browser.close()
+
+
+if __name__ == "__main__":
+    text = """分享一个免费的小红书封面工具
+MD2Card"""
+
+    generate_cover(text, "/Users/wangzihan/Autobrowser/assets/my_cover.png")
