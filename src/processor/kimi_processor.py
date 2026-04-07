@@ -208,11 +208,7 @@ class KimiProcessor:
             # 先尝试直接解析
             try:
                 data = json.loads(response)
-                return {
-                    'title': data.get('title', ''),
-                    'content': data.get('content', ''),
-                    'cover_text': data.get('cover_text', '')
-                }
+                return self._format_result(data)
             except json.JSONDecodeError:
                 pass
 
@@ -221,16 +217,13 @@ class KimiProcessor:
             json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group(1))
-                return {
-                    'title': data.get('title', ''),
-                    'content': data.get('content', ''),
-                    'cover_text': data.get('cover_text', '')
-                }
+                return self._format_result(data)
 
             # 如果都没找到，返回原始内容
             logger.warning("无法解析 Kimi 响应为 JSON，返回原始内容")
+            title = response[:20] if len(response) > 20 else response
             return {
-                'title': response[:20] if len(response) > 20 else response,
+                'title': title,
                 'content': response[:200] if len(response) > 200 else response,
                 'cover_text': 'AI资讯'
             }
@@ -242,3 +235,27 @@ class KimiProcessor:
                 'content': '内容生成失败',
                 'cover_text': 'AI资讯'
             }
+
+    def _format_result(self, data: dict) -> Dict[str, str]:
+        """格式化结果，确保长度限制"""
+        title = data.get('title', '🔥 AI资讯')
+        content = data.get('content', '')
+        cover_text = data.get('cover_text', 'AI资讯')
+
+        # 确保标题不超过20字
+        if len(title) > 20:
+            title = title[:19] + '…'
+
+        # 确保内容不超过200字
+        if len(content) > 200:
+            content = content[:197] + '...'
+
+        # 确保封面文字不超过10字
+        if len(cover_text) > 10:
+            cover_text = cover_text[:9] + '…'
+
+        return {
+            'title': title,
+            'content': content,
+            'cover_text': cover_text
+        }

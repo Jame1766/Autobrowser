@@ -3,11 +3,16 @@ import time
 import os
 
 
-def generate_cover(text, output_path="cover.png"):
+def generate_cover(text, output_path="cover.png", timeout_ms=30000):
     """使用 MD2Card 生成小红书封面图片"""
     # 确保输出目录存在
     output_dir = os.path.dirname(output_path) or "."
     os.makedirs(output_dir, exist_ok=True)
+
+    # 清理文本
+    text = text.strip()[:20]  # 限制长度
+    if not text:
+        text = "AI资讯"
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -19,27 +24,33 @@ def generate_cover(text, output_path="cover.png"):
         try:
             print("[1/5] 打开网页...")
             page.goto("https://md2card.cn/zh/cover", timeout=60000)
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(2000)  # 减少等待时间
 
             print("[2/5] 输入文字...")
             textarea_xpath = "xpath=/html/body/main/div/div/div/div[2]/div/div[1]/textarea"
             page.locator(textarea_xpath).fill(text)
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(300)
 
             print("[3/5] 点击生成按钮...")
             button_xpath = "xpath=/html/body/main/div/div/div/div[2]/div/div[2]/div[2]/button[2]"
             page.locator(button_xpath).click()
 
-            print("[4/5] 等待生成图片 (5s)...")
-            page.wait_for_timeout(5000)
+            print("[4/5] 等待生成图片...")
+            page.wait_for_timeout(3000)  # 减少等待时间
 
             print("[5/5] 点击下载按钮...")
             # 等待下载按钮出现
-            page.wait_for_selector("button:has-text('下载')", timeout=10000)
+            try:
+                page.wait_for_selector("button:has-text('下载')", timeout=timeout_ms)
+            except:
+                # 如果找不到下载按钮，尝试截图保存
+                print("下载按钮未找到，尝试截图...")
+                page.screenshot(path=output_path, full_page=False)
+                print(f"完成! 封面已截图保存到: {output_path}")
+                return output_path
 
             # 监听下载事件
             with page.expect_download() as download_info:
-                # 使用更通用的选择器
                 page.locator("button:has-text('下载')").first.click()
 
             download = download_info.value
@@ -51,7 +62,10 @@ def generate_cover(text, output_path="cover.png"):
 
         except Exception as e:
             print(f"错误: {e}")
-            page.screenshot(path="error.png")
+            try:
+                page.screenshot(path="error.png")
+            except:
+                pass
             return None
 
         finally:
